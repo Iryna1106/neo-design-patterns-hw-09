@@ -1,13 +1,16 @@
-# neo-design-patterns-hw-09 — Патерн «Шаблонний метод»
+# neo-design-patterns-hw-09 — Шаблонний метод + Ітератор
 
-Експорт користувацької статистики у форматах **CSV**, **JSON** та **XML** із застосуванням
-поведінкового патерну **Template Method (Шаблонний метод)**.
+Дві поведінкові частини на одних даних користувачів:
+
+1. **Експорт** користувацької статистики у формати **CSV**, **JSON**, **XML** —
+   патерн **Template Method (Шаблонний метод)**.
+2. **Обхід** збережених файлів — патерн **Iterator (Ітератор)**.
 
 Дані завантажуються з API [`https://jsonplaceholder.typicode.com/users`](https://jsonplaceholder.typicode.com/users),
-з кожного запису відбираються поля `id`, `name`, `email`, `phone`, після чого
-результат сортується за іменем і зберігається у трьох форматах.
+з кожного запису відбираються поля `id`, `name`, `email`, `phone`, результат сортується
+за іменем і зберігається у трьох форматах.
 
-## Як працює патерн
+## Частина 1. Шаблонний метод (експорт)
 
 Базовий клас `DataExporter` інкапсулює **незмінний алгоритм експорту** у шаблонному
 методі `export()`, який викликає кроки у фіксованому порядку й **без жодних умовних гілок**:
@@ -28,6 +31,27 @@
 - **`XmlExporter`** — `render()` + `save()` + перевизначений `afterRender()` (додає коментар
   про час генерації у кінець файлу) → `dist/users.xml`
 
+## Частина 2. Ітератор (обхід файлів)
+
+Три ітератори для послідовного обходу збережених файлів. Кожен **самостійно відкриває та
+парсить** свій файл у конструкторі й реалізує `[Symbol.iterator](): Iterator<UserData>`
+через генератор, тож сумісний із `for...of`:
+
+| Клас | Джерело | Парсинг |
+| --- | --- | --- |
+| `CsvIterator` | `dist/users.csv` | розбір рядків по комах (пропускаючи заголовок) |
+| `JsonIterator` | `dist/users.json` | `JSON.parse` |
+| `XmlIterator` | `dist/users.xml` | `fast-xml-parser` |
+
+```ts
+for (const user of new CsvIterator("./dist/users.csv")) {
+  console.log(user); // { id, name, email, phone }
+}
+```
+
+Логіка читання та парсингу інкапсульована всередині ітератора — споживач працює лише з
+послідовністю об'єктів `UserData`.
+
 ## Структура проєкту
 
 ```
@@ -38,9 +62,14 @@
     │   ├── CsvExporter.ts      # Експорт у CSV
     │   ├── JsonExporter.ts     # Експорт у JSON
     │   └── XmlExporter.ts      # Експорт у XML (+ afterRender)
+    ├── iterators/
+    │   ├── CsvIterator.ts      # Ітератор по CSV
+    │   ├── JsonIterator.ts     # Ітератор по JSON
+    │   └── XmlIterator.ts      # Ітератор по XML
     ├── data/
     │   └── UserData.ts         # Тип даних користувача
-    └── main.ts                 # Точка входу для демонстрації
+    ├── main.ts                 # Демонстрація експорту
+    └── main-iterate.ts         # Демонстрація ітераторів
 ```
 
 ## Встановлення
@@ -53,61 +82,44 @@ npm install
 
 ## Запуск
 
+**1. Експорт** — генерує файли у `dist/`:
+
 ```bash
 npx ts-node ./src/main.ts
 ```
 
-Після запуску у директорії `dist/` створюються три файли: `users.csv`, `users.json`, `users.xml`.
+**2. Обхід ітераторами** — читає згенеровані файли і виводить користувачів:
+
+```bash
+npx ts-node ./src/main-iterate.ts
+```
+
+> На диску Windows у WSL, де `npx ts-node` не запускається (npm не може створити симлінк
+> `.bin/ts-node`), використовуйте `node -r ts-node/register ./src/main.ts`
+> (аналогічно для `main-iterate.ts`).
 
 ## Очікуваний результат
+
+Після `main.ts` у `dist/` створюються три файли:
 
 **`dist/users.csv`**
 
 ```text
 id,name,email,phone
 5,Chelsey Dietrich,Lucio_Hettinger@annie.ca,(254)954-1289
-10,Clementina DuBuque,Rey.Padberg@karina.biz,024-648-3804
 ...
 ```
 
-**`dist/users.json`**
+**`dist/users.json`** — масив об'єктів `{ id, name, email, phone }`.
 
-```json
-[
-  {
-    "id": 5,
-    "name": "Chelsey Dietrich",
-    "email": "Lucio_Hettinger@annie.ca",
-    "phone": "(254)954-1289"
-  },
-  ...
-]
-```
+**`dist/users.xml`** — `<users><user>…</user></users>` + коментар про час генерації.
 
-**`dist/users.xml`**
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<users>
-  <user>
-    <id>5</id>
-    <name>Chelsey Dietrich</name>
-    <email>Lucio_Hettinger@annie.ca</email>
-    <phone>(254)954-1289</phone>
-  </user>
-  ...
-</users>
-<!-- Експорт згенеровано: 2025-05-12T22:24:31.964Z -->
-```
+Після `main-iterate.ts` у консоль виводяться об'єкти `UserData` по одному на ітерацію
+для кожного формату (секції `--- CSV ---`, `--- JSON ---`, `--- XML ---`).
 
 ## Технології
 
 - TypeScript (strict)
 - ts-node
 - node-fetch — завантаження даних з API
-
----
-
-> **Примітка.** У директорії `src/iterators/` та файлі `src/main-iterate.ts` лежать
-> стартові заготовки для окремої частини завдання (ітератори для обходу експортованих
-> файлів). Вони не входять до цього завдання й наразі не реалізовані.
+- fast-xml-parser — парсинг XML в ітераторі
